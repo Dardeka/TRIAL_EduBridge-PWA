@@ -3,17 +3,26 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { GraduationCap, Menu, X, Bell, Search, LogOut, UserCircle } from 'lucide-react';
+import {
+  GraduationCap,
+  Menu,
+  X,
+  Bell,
+  Search,
+  LogOut,
+  UserCircle,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { InputWithIcon } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { type NavGroup, type NavItem } from '@/config/navigation';
 
 export interface DashboardShellProps {
   navGroups: NavGroup[];
-  user: { name: string; initials: string };
+  user: { name: string; initials: string; role?: string };
   brandLabel: string;
   brandHref: string;
   onSignOut?: () => void;
@@ -32,6 +41,20 @@ export function DashboardShell({
 }: DashboardShellProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = React.useState(false);
+
+  const filteredNavGroups = React.useMemo(() => {
+    return navGroups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter(
+          (item) =>
+            !item.roles ||
+            (user.role &&
+              item.roles.includes(user.role as 'student' | 'admin' | 'guest'))
+        ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [navGroups, user.role]);
 
   const renderNavItem = (item: NavItem) => {
     const active = pathname === item.href;
@@ -74,14 +97,12 @@ export function DashboardShell({
           </Link>
         </div>
         <nav className="flex-1 space-y-6 overflow-y-auto p-3">
-          {navGroups.map((group, gi) => (
+          {filteredNavGroups.map((group, gi) => (
             <div key={gi}>
               <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {group.title}
               </p>
-              <div className="space-y-1">
-                {group.items.map(renderNavItem)}
-              </div>
+              <div className="space-y-1">{group.items.map(renderNavItem)}</div>
             </div>
           ))}
         </nav>
@@ -134,15 +155,18 @@ export function DashboardShell({
                   {brandLabel}
                 </span>
               </Link>
-              <button
-                onClick={() => setMobileOpen(false)}
-                aria-label="Close sidebar"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-1">
+                <ThemeToggle />
+                <button
+                  onClick={() => setMobileOpen(false)}
+                  aria-label="Close sidebar"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
             <nav className="flex-1 space-y-6 overflow-y-auto p-3">
-              {navGroups.map((group, gi) => (
+              {filteredNavGroups.map((group, gi) => (
                 <div key={gi}>
                   <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {group.title}
@@ -188,7 +212,11 @@ export function DashboardShell({
           </div>
           <div className="flex items-center gap-2">
             {isGuest && (
-              <Badge variant="warning" size="sm" className="hidden sm:inline-flex">
+              <Badge
+                variant="warning"
+                size="sm"
+                className="hidden sm:inline-flex"
+              >
                 <UserCircle className="h-3 w-3" /> Mode Tamu
               </Badge>
             )}
@@ -196,6 +224,7 @@ export function DashboardShell({
               <Bell className="h-5 w-5" />
               <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent" />
             </Button>
+            <ThemeToggle />
             <Avatar className="h-9 w-9 border-2 border-primary/20">
               <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
                 {user.initials}

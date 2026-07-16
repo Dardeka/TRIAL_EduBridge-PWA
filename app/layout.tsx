@@ -3,6 +3,8 @@ import { Inter, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import { siteConfig } from '@/config/site';
 import { AuthProvider } from '@/components/providers/auth-provider';
 import { ServiceWorkerRegister } from '@/components/providers/sw-register';
+import { Toaster } from '@/components/ui/sonner';
+import { ThemeProvider } from 'next-themes';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
@@ -75,8 +77,11 @@ export default function RootLayout({
         className={`${inter.variable} ${jakarta.variable} ${mono.variable} font-sans antialiased`}
       >
         <AuthProvider>
-          {children}
-          <ServiceWorkerRegister />
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            {children}
+            <ServiceWorkerRegister />
+          </ThemeProvider>
+          <Toaster />
         </AuthProvider>
       </body>
     </html>

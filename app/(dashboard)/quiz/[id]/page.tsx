@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, CheckCircle2, XCircle, Clock, Award } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
@@ -16,60 +16,101 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/components/providers/auth-provider';
+import { supabase } from '@/lib/supabase';
 
-const quizData = {
-  title: 'Kuis: Aljabar Linear',
-  subject: 'Matematika',
-  level: 'SMA',
-  totalQuestions: 5,
-  questions: [
-    {
-      question: 'Berapa hasil dari 2x + 3 = 7?',
-      options: ['x = 1', 'x = 2', 'x = 3', 'x = 4'],
-      answer: 1,
-    },
-    {
-      question: 'Metode eliminasi digunakan untuk?',
-      options: [
-        'Mencari akar persamaan',
-        'Menghilangkan satu variabel',
-        'Menggambar grafik',
-        'Mencari nilai maksimum',
-      ],
-      answer: 1,
-    },
-    {
-      question: 'Sistem persamaan 2x + y = 5 dan x - y = 1, nilai x =?',
-      options: ['x = 1', 'x = 2', 'x = 3', 'x = 4'],
-      answer: 1,
-    },
-    {
-      question: 'Jika 3x - 6 = 0, maka x =?',
-      options: ['x = 1', 'x = 2', 'x = 3', 'x = 0'],
-      answer: 1,
-    },
-    {
-      question: 'Garis y = 2x + 3 memotong sumbu y di titik?',
-      options: ['(0, 2)', '(0, 3)', '(3, 0)', '(2, 0)'],
-      answer: 1,
-    },
-  ],
-};
+interface Question {
+  _id: string;
+  question: string;
+  options: string[];
+  correctAnswer: number;
+}
+
+interface QuizData {
+  _id: string;
+  title: string;
+  passingScore: number;
+  questions: Question[];
+  materialId: {
+    _id: string;
+    title: string;
+    level: string;
+    subject: { name: string } | null;
+  };
+}
 
 export default function QuizPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = use(params);
+  const { user, isGuest } = useAuth();
+  const [quizData, setQuizData] = useState<QuizData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFoundError, setNotFoundError] = useState(false);
+
   const [current, setCurrent] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [answers, setAnswers] = useState<number[]>([]);
   const [finished, setFinished] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [xpEarned, setXpEarned] = useState(0);
+  const [serverResult, setServerResult] = useState<{
+    score: number;
+    percentage: number;
+    passed: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    async function fetchQuiz() {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/quizzes/${id}`);
+        if (res.status === 404) {
+          setNotFoundError(true);
+          return;
+        }
+        if (!res.ok) throw new Error('Gagal memuat kuis');
+        const json = await res.json();
+        setQuizData(json.data);
+      } catch (err) {
+        setNotFoundError(true);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchQuiz();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="py-20 text-center text-muted-foreground">
+        Memuat kuis...
+      </div>
+    );
+  }
+
+  if (notFoundError || !quizData) {
+    return (
+      <div>
+        <Link
+          href="/materi"
+          className="mb-4 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" /> Kembali ke Materi
+        </Link>
+        <div className="py-20 text-center text-muted-foreground">
+          Kuis untuk materi ini belum tersedia.
+        </div>
+      </div>
+    );
+  }
 
   const total = quizData.questions.length;
   const progress = ((current + 1) / total) * 100;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (selected === null) return;
     const newAnswers = [...answers, selected];
     setAnswers(newAnswers);
@@ -79,15 +120,53 @@ export default function QuizPage({
       setSelected(null);
     } else {
       setFinished(true);
+
+      if (!isGuest && user?.id) {
+        try {
+          setSubmitting(true);
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          const res = await fetch('/api/quiz-submit', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(session?.access_token
+                ? { Authorization: `Bearer ${session.access_token}` }
+                : {}),
+            },
+            body: JSON.stringify({
+              materialId: quizData.materialId._id,
+              quizTitle: quizData.title,
+              answers: newAnswers,
+            }),
+          });
+          if (res.ok) {
+            const json = await res.json();
+            setXpEarned(json.data.xpEarned);
+            setServerResult({
+              score: json.data.score,
+              percentage: json.data.percentage,
+              passed: json.data.passed,
+            });
+          }
+        } catch {
+        } finally {
+          setSubmitting(false);
+        }
+      }
     }
   };
 
   if (finished) {
-    const score = answers.filter(
-      (a, i) => a === quizData.questions[i].answer
-    ).length;
-    const percentage = Math.round((score / total) * 100);
-    const passed = percentage >= 70;
+    const score =
+      serverResult?.score ??
+      answers.filter((a, i) => a === quizData.questions[i].correctAnswer)
+        .length;
+    const percentage =
+      serverResult?.percentage ?? Math.round((score / total) * 100);
+    const passed =
+      serverResult?.passed ?? percentage >= (quizData.passingScore || 70);
 
     return (
       <div>
@@ -103,7 +182,9 @@ export default function QuizPage({
             <div
               className={cn(
                 'mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full',
-                passed ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'
+                passed
+                  ? 'bg-success/10 text-success'
+                  : 'bg-warning/10 text-warning'
               )}
             >
               {passed ? (
@@ -130,6 +211,16 @@ export default function QuizPage({
               <p className="mt-2 text-sm text-muted-foreground">
                 {score} dari {total} jawaban benar
               </p>
+              {!isGuest && xpEarned > 0 && (
+                <p className="mt-2 text-sm font-medium text-accent-foreground">
+                  +{xpEarned} XP didapat
+                </p>
+              )}
+              {isGuest && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Progress tidak disimpan karena mode tamu
+                </p>
+              )}
             </div>
             <Progress
               value={percentage}
@@ -145,6 +236,8 @@ export default function QuizPage({
                 setSelected(null);
                 setAnswers([]);
                 setFinished(false);
+                setXpEarned(0);
+                setServerResult(null);
               }}
             >
               Ulangi Kuis
@@ -171,7 +264,7 @@ export default function QuizPage({
 
       <PageHeader
         title={quizData.title}
-        description={`${quizData.subject} - ${quizData.level}`}
+        description={`${quizData.materialId.subject?.name ?? '-'} - ${quizData.materialId.level}`}
       />
 
       <div className="mx-auto max-w-2xl space-y-6">
@@ -218,10 +311,14 @@ export default function QuizPage({
           <CardFooter className="justify-end">
             <Button
               onClick={handleNext}
-              disabled={selected === null}
+              disabled={selected === null || submitting}
               className="gap-2"
             >
-              {current + 1 < total ? 'Selanjutnya' : 'Selesai'}
+              {submitting
+                ? 'Menyimpan...'
+                : current + 1 < total
+                  ? 'Selanjutnya'
+                  : 'Selesai'}
             </Button>
           </CardFooter>
         </Card>

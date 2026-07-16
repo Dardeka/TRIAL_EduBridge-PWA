@@ -1,9 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { User, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
+import { z } from 'zod';
+import {
+  User,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InputWithIcon } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,19 +29,45 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/components/providers/auth-provider';
 
+const registerSchema = z.object({
+  fullName: z.string().min(2, 'Nama minimal 2 karakter').max(100),
+  email: z.string().email('Email tidak valid'),
+  password: z.string().min(6, 'Password minimal 6 karakter'),
+  educationLevel: z.enum(['SD', 'SMP', 'SMA'], {
+    required_error: 'Pilih jenjang pendidikan',
+  }),
+});
+
 export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [educationLevel, setEducationLevel] = useState<
+    'SD' | 'SMP' | 'SMA' | ''
+  >('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
-  const { signUp } = useAuth();
+  const { signUp, user, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.push(user.role === 'admin' ? '/admin' : '/dashboard');
+    }
+  }, [user, authLoading, router]);
 
   const strength =
-    password.length >= 12 ? 100 : password.length >= 8 ? 75 : password.length >= 4 ? 50 : password.length > 0 ? 25 : 0;
+    password.length >= 12
+      ? 100
+      : password.length >= 8
+        ? 75
+        : password.length >= 4
+          ? 50
+          : password.length > 0
+            ? 25
+            : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,20 +78,30 @@ export default function RegisterPage() {
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password minimal 6 karakter.');
+    const result = registerSchema.safeParse({
+      fullName,
+      email,
+      password,
+      educationLevel,
+    });
+    if (!result.success) {
+      setError(result.error.errors[0].message);
       return;
     }
 
     setLoading(true);
 
-    const { error: signUpError } = await signUp(email, password, fullName);
+    const { error: signUpError } = await signUp(
+      email,
+      password,
+      fullName,
+      educationLevel as 'SD' | 'SMP' | 'SMA'
+    );
     if (signUpError) {
       setError(signUpError);
       setLoading(false);
       return;
     }
-    router.push('/dashboard');
   };
 
   return (
@@ -146,6 +192,23 @@ export default function RegisterPage() {
               </div>
             )}
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="education-level">Jenjang Pendidikan</Label>
+            <select
+              id="education-level"
+              value={educationLevel}
+              onChange={(e) =>
+                setEducationLevel(e.target.value as 'SD' | 'SMP' | 'SMA' | '')
+              }
+              className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              required
+            >
+              <option value="">Pilih jenjang...</option>
+              <option value="SD">SD (Sekolah Dasar)</option>
+              <option value="SMP">SMP (Sekolah Menengah Pertama)</option>
+              <option value="SMA">SMA (Sekolah Menengah Atas)</option>
+            </select>
+          </div>
           <div className="flex items-start gap-2">
             <input
               type="checkbox"
@@ -156,20 +219,16 @@ export default function RegisterPage() {
             />
             <Label htmlFor="terms" className="text-sm font-normal">
               Saya setuju dengan{' '}
-              <Link href="#" className="text-primary hover:underline">
+              <Link href="/terms" className="text-primary hover:underline">
                 Syarat & Ketentuan
               </Link>{' '}
               dan{' '}
-              <Link href="#" className="text-primary hover:underline">
+              <Link href="/privacy" className="text-primary hover:underline">
                 Kebijakan Privasi
               </Link>
             </Label>
           </div>
-          <Button
-            type="submit"
-            className="w-full gap-2"
-            disabled={loading}
-          >
+          <Button type="submit" className="w-full gap-2" disabled={loading}>
             {loading ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" /> Mendaftar...

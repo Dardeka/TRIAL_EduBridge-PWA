@@ -1,24 +1,50 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import { SubjectGrid } from '@/components/layout/subject-grid';
 
-const smpSubjects = [
-  { title: 'Matematika', icon: '📐', count: 32, color: 'bg-primary/15' },
-  { title: 'Bahasa Indonesia', icon: '📚', count: 26, color: 'bg-accent/15' },
-  { title: 'IPA', icon: '🔬', count: 28, color: 'bg-success/15' },
-  { title: 'IPS', icon: '🗺️', count: 22, color: 'bg-info/15' },
-  { title: 'Bahasa Inggris', icon: '🌐', count: 24, color: 'bg-warning/15' },
-  { title: 'PPKn', icon: '⚖️', count: 18, color: 'bg-destructive/15' },
-  { title: 'Seni Budaya', icon: '🎭', count: 14, color: 'bg-primary/15' },
-  { title: 'PJOK', icon: '🏀', count: 12, color: 'bg-accent/15' },
-  { title: 'Informatika', icon: '🖥️', count: 16, color: 'bg-info/15' },
-  { title: 'Prakarya', icon: '✂️', count: 10, color: 'bg-success/15' },
-];
+interface SubjectItem {
+  id: string;
+  title: string;
+  icon: string;
+  count: number;
+  color: string;
+}
 
 export default function KelasSMPPage() {
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchSubjects() {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/kelas-subjects?level=SMP');
+        if (!res.ok) throw new Error('Gagal memuat mata pelajaran');
+        const json = await res.json();
+        setSubjects(json.data);
+      } catch (err) {
+        setSubjects([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchSubjects();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="py-20 text-center text-muted-foreground">
+        Memuat mata pelajaran...
+      </div>
+    );
+  }
+
   return (
     <SubjectGrid
       level="SMP"
       levelDescription="Sekolah Menengah Pertama - Kelas 7 sampai 9"
-      subjects={smpSubjects}
+      subjects={subjects}
     />
   );
 }

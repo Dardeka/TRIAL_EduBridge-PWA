@@ -82,7 +82,7 @@ export function AuthGuard({
   return (
     <DashboardShell
       navGroups={navGroups}
-      user={{ name: user.fullName, initials: user.initials }}
+      user={{ name: user.fullName, initials: user.initials, role: user.role }}
       brandLabel={brandLabel}
       brandHref={brandHref}
       onSignOut={handleSignOut}

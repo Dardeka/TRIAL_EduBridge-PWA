@@ -15,7 +15,10 @@ export type Profile = {
   id: string;
   full_name: string;
   role: 'student' | 'admin' | 'guest';
+  education_level: 'SD' | 'SMP' | 'SMA' | null;
   avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type AuthUser = {
@@ -24,5 +27,8 @@ export type AuthUser = {
   fullName: string;
   initials: string;
   role: 'student' | 'admin' | 'guest';
+  educationLevel: 'SD' | 'SMP' | 'SMA' | null;
   isGuest: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 };

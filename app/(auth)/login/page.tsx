@@ -1,9 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle, UserRound, Loader2 } from 'lucide-react';
+import { z } from 'zod';
+import {
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  AlertCircle,
+  UserRound,
+  Loader2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InputWithIcon } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,6 +28,11 @@ import {
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuth } from '@/components/providers/auth-provider';
 
+const loginSchema = z.object({
+  email: z.string().email('Email tidak valid'),
+  password: z.string().min(1, 'Password wajib diisi'),
+});
+
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
@@ -26,11 +41,24 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [guestLoading, setGuestLoading] = useState(false);
   const router = useRouter();
-  const { signIn, continueAsGuest } = useAuth();
+  const { signIn, continueAsGuest, user, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.push(user.role === 'admin' ? '/admin' : '/dashboard');
+    }
+  }, [user, authLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const result = loginSchema.safeParse({ email, password });
+    if (!result.success) {
+      setError(result.error.errors[0].message);
+      return;
+    }
+
     setLoading(true);
 
     const { error: signInError } = await signIn(email, password);
@@ -39,7 +67,6 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    router.push('/dashboard');
   };
 
   const handleGuest = () => {
@@ -79,10 +106,7 @@ export default function LoginPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Password</Label>
-              <Link
-                href="#"
-                className="text-xs text-primary hover:underline"
-              >
+              <Link href="#" className="text-xs text-primary hover:underline">
                 Lupa password?
               </Link>
             </div>

@@ -1,26 +1,50 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import { SubjectGrid } from '@/components/layout/subject-grid';
 
-const smaSubjects = [
-  { title: 'Matematika', icon: '📊', count: 40, color: 'bg-primary/15' },
-  { title: 'Fisika', icon: '⚛️', count: 28, color: 'bg-accent/15' },
-  { title: 'Kimia', icon: '🧪', count: 26, color: 'bg-success/15' },
-  { title: 'Biologi', icon: '🧬', count: 24, color: 'bg-info/15' },
-  { title: 'Bahasa Indonesia', icon: '📝', count: 30, color: 'bg-warning/15' },
-  { title: 'Bahasa Inggris', icon: '🌍', count: 32, color: 'bg-destructive/15' },
-  { title: 'Sejarah', icon: '🏛️', count: 20, color: 'bg-primary/15' },
-  { title: 'Geografi', icon: '🗺️', count: 18, color: 'bg-accent/15' },
-  { title: 'Ekonomi', icon: '💰', count: 22, color: 'bg-info/15' },
-  { title: 'Sosiologi', icon: '👥', count: 18, color: 'bg-success/15' },
-  { title: 'PPKn', icon: '🇮🇩', count: 16, color: 'bg-warning/15' },
-  { title: 'Informatika', icon: '💻', count: 20, color: 'bg-destructive/15' },
-];
+interface SubjectItem {
+  id: string;
+  title: string;
+  icon: string;
+  count: number;
+  color: string;
+}
 
 export default function KelasSMAPage() {
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchSubjects() {
+      try {
+        setLoading(true);
+        const res = await fetch('/api/kelas-subjects?level=SMA');
+        if (!res.ok) throw new Error('Gagal memuat mata pelajaran');
+        const json = await res.json();
+        setSubjects(json.data);
+      } catch (err) {
+        setSubjects([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchSubjects();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="py-20 text-center text-muted-foreground">
+        Memuat mata pelajaran...
+      </div>
+    );
+  }
+
   return (
     <SubjectGrid
       level="SMA"
       levelDescription="Sekolah Menengah Atas - Kelas 10 sampai 12"
-      subjects={smaSubjects}
+      subjects={subjects}
     />
   );
 }

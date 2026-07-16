@@ -1,7 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { UploadCloud, FileText, Video, X, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { z } from 'zod';
+import { UploadCloud, FileText, Video, X, Check, Loader2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import {
   Card,
@@ -11,30 +13,174 @@ import {
   CardContent,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input, InputWithIcon } from '@/components/ui/input';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+
+const uploadSchema = z.object({
+  title: z.string().min(3, 'Judul minimal 3 karakter').max(200),
+  subjectId: z.string().min(1, 'Pilih mata pelajaran'),
+  level: z.enum(['SD', 'SMP', 'SMA'], { required_error: 'Pilih jenjang' }),
+  description: z.string().optional(),
+});
 
 const fileTypes = [
   { id: 'pdf', label: 'PDF Document', icon: FileText, accept: '.pdf' },
   { id: 'video', label: 'Video', icon: Video, accept: 'video/*' },
 ];
 
+const levels = ['SD', 'SMP', 'SMA'];
+
+interface Subject {
+  _id: string;
+  name: string;
+}
+
 export default function AdminUploadPage() {
-  const [fileType, setFileType] = useState('pdf');
+  const router = useRouter();
+  const [fileType, setFileType] = useState<'pdf' | 'video'>('pdf');
   const [dragOver, setDragOver] = useState(false);
-  const [files, setFiles] = useState<{ name: string; size: string }[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [title, setTitle] = useState('');
+  const [subjectId, setSubjectId] = useState('');
+  const [level, setLevel] = useState('');
+  const [description, setDescription] = useState('');
+  const [status, setStatus] = useState<'draft' | 'review' | 'published'>(
+    'draft'
+  );
+
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    async function fetchSubjects() {
+      try {
+        const res = await fetch('/api/subjects-list');
+        const json = await res.json();
+        setSubjects(json.data || []);
+      } catch (err) {
+        setSubjects([]);
+      }
+    }
+    fetchSubjects();
+  }, []);
+
+  const pickFile = (file: File) => {
+    setSelectedFile(file);
+    setError(null);
+  };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const dropped = Array.from(e.dataTransfer.files).map((f) => ({
-      name: f.name,
-      size: `${(f.size / 1024 / 1024).toFixed(1)} MB`,
-    }));
-    setFiles([...files, ...dropped]);
+    if (e.dataTransfer.files[0]) {
+      pickFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const formatSize = (bytes: number) =>
+    `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!selectedFile) {
+      setError('Pilih file terlebih dahulu.');
+      return;
+    }
+
+    const result = uploadSchema.safeParse({
+      title,
+      subjectId,
+      level,
+      description,
+    });
+    if (!result.success) {
+      setError(result.error.errors[0].message);
+      return;
+    }
+
+    try {
+      setUploading(true);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      // 1. Upload file ke Vercel Blob
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+
+      const uploadRes = await fetch('/api/admin/upload-file', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json();
+        throw new Error(err.error || 'Gagal mengupload file');
+      }
+      const uploadJson = await uploadRes.json();
+      const fileUrl = uploadJson.data.url;
+
+      // 2. Simpan metadata materi ke MongoDB
+      const materialRes = await fetch('/api/admin/materials', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title,
+          subject: subjectId,
+          level,
+          description,
+          type: fileType,
+          status,
+          fileSize: formatSize(selectedFile.size),
+          chapters: [
+            {
+              title: 'Bagian 1',
+              order: 1,
+              ...(fileType === 'video'
+                ? { videoUrl: fileUrl }
+                : { pdfUrl: fileUrl }),
+            },
+          ],
+        }),
+      });
+
+      if (!materialRes.ok) {
+        const err = await materialRes.json();
+        throw new Error(err.error || 'Gagal menyimpan materi');
+      }
+
+      setSuccess(true);
+      toast.success('Materi berhasil diupload!');
+      setTimeout(() => router.push('/admin/materi'), 1200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Terjadi kesalahan');
+      toast.error(err instanceof Error ? err.message : 'Terjadi kesalahan');
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -46,7 +192,20 @@ export default function AdminUploadPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Upload form */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="space-y-6 lg:col-span-2">
+          {error && (
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          {success && (
+            <Alert variant="success">
+              <AlertDescription>
+                Materi berhasil diupload! Mengalihkan...
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* File type selector */}
           <Card>
             <CardHeader>
@@ -59,7 +218,11 @@ export default function AdminUploadPage() {
                   return (
                     <button
                       key={type.id}
-                      onClick={() => setFileType(type.id)}
+                      type="button"
+                      onClick={() => {
+                        setFileType(type.id as 'pdf' | 'video');
+                        setSelectedFile(null);
+                      }}
                       className={cn(
                         'flex flex-col items-center gap-2 rounded-lg border-2 p-6 transition-colors',
                         fileType === type.id
@@ -75,9 +238,7 @@ export default function AdminUploadPage() {
                             : 'text-muted-foreground'
                         )}
                       />
-                      <span className="text-sm font-medium">
-                        {type.label}
-                      </span>
+                      <span className="text-sm font-medium">{type.label}</span>
                     </button>
                   );
                 })}
@@ -116,18 +277,10 @@ export default function AdminUploadPage() {
                     <input
                       type="file"
                       className="hidden"
-                      accept={
-                        fileTypes.find((t) => t.id === fileType)?.accept
-                      }
+                      accept={fileTypes.find((t) => t.id === fileType)?.accept}
                       onChange={(e) => {
-                        if (e.target.files) {
-                          const newFiles = Array.from(e.target.files).map(
-                            (f) => ({
-                              name: f.name,
-                              size: `${(f.size / 1024 / 1024).toFixed(1)} MB`,
-                            })
-                          );
-                          setFiles([...files, ...newFiles]);
+                        if (e.target.files?.[0]) {
+                          pickFile(e.target.files[0]);
                         }
                       }}
                     />
@@ -140,37 +293,31 @@ export default function AdminUploadPage() {
                 </p>
               </div>
 
-              {files.length > 0 && (
+              {selectedFile && (
                 <div className="mt-4 space-y-2">
-                  {files.map((file, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-3 rounded-lg border p-3"
-                    >
-                      {fileType === 'pdf' ? (
-                        <FileText className="h-5 w-5 text-destructive" />
-                      ) : (
-                        <Video className="h-5 w-5 text-info" />
-                      )}
-                      <div className="flex-1">
-                        <p className="text-sm font-medium">{file.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {file.size}
-                        </p>
-                      </div>
-                      <Badge variant="success" size="sm">
-                        <Check className="h-3 w-3" /> Siap
-                      </Badge>
-                      <button
-                        onClick={() =>
-                          setFiles(files.filter((_, j) => j !== i))
-                        }
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                  <div className="flex items-center gap-3 rounded-lg border p-3">
+                    {fileType === 'pdf' ? (
+                      <FileText className="h-5 w-5 text-destructive" />
+                    ) : (
+                      <Video className="h-5 w-5 text-info" />
+                    )}
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">{selectedFile.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatSize(selectedFile.size)}
+                      </p>
                     </div>
-                  ))}
+                    <Badge variant="success" size="sm">
+                      <Check className="h-3 w-3" /> Siap
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFile(null)}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -182,22 +329,48 @@ export default function AdminUploadPage() {
               <CardTitle>Informasi Materi</CardTitle>
             </CardHeader>
             <CardContent>
-              <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+              <form className="space-y-4" onSubmit={handleSubmit}>
                 <div className="space-y-2">
                   <Label htmlFor="title">Judul Materi</Label>
                   <Input
                     id="title"
                     placeholder="Contoh: Aljabar Linear - Sistem Persamaan"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
                   />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="subject">Mata Pelajaran</Label>
-                    <Input id="subject" placeholder="Matematika" />
+                    <select
+                      id="subject"
+                      value={subjectId}
+                      onChange={(e) => setSubjectId(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Pilih mata pelajaran</option>
+                      {subjects.map((s) => (
+                        <option key={s._id} value={s._id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="level">Jenjang</Label>
-                    <Input id="level" placeholder="SMA" />
+                    <select
+                      id="level"
+                      value={level}
+                      onChange={(e) => setLevel(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">Pilih jenjang</option>
+                      {levels.map((l) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -205,10 +378,38 @@ export default function AdminUploadPage() {
                   <Textarea
                     id="description"
                     placeholder="Deskripsi singkat tentang materi..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
                   />
                 </div>
-                <Button type="submit" className="gap-2">
-                  <UploadCloud className="h-4 w-4" /> Upload Materi
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={status}
+                    onValueChange={(v) =>
+                      setStatus(v as 'draft' | 'review' | 'published')
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="review">Review</SelectItem>
+                      <SelectItem value="published">Published</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button type="submit" className="gap-2" disabled={uploading}>
+                  {uploading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" /> Mengupload...
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="h-4 w-4" /> Upload Materi
+                    </>
+                  )}
                 </Button>
               </form>
             </CardContent>

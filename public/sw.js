@@ -1,29 +1,21 @@
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const STATIC_CACHE = `edubridge-static-${CACHE_VERSION}`;
-const PAGE_CACHE = `edubridge-pages-${CACHE_VERSION}`;
 const OFFLINE_URL = '/offline';
 
 const STATIC_ASSETS = [
   '/',
-  '/dashboard',
-  '/kelas',
-  '/mapel',
-  '/materi',
-  '/offline',
   '/manifest.json',
   '/favicon.svg',
   '/icon-192.svg',
   '/icon-512.svg',
   '/apple-touch-icon.svg',
+  OFFLINE_URL,
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches
-      .open(STATIC_CACHE)
-      .then((cache) => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting())
-      .catch(() => {})
+    caches.open(STATIC_CACHE).then((cache) => cache.addAll(STATIC_ASSETS))
   );
 });
 
@@ -34,7 +26,7 @@ self.addEventListener('activate', (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key !== STATIC_CACHE && key !== PAGE_CACHE)
+            .filter((key) => key !== STATIC_CACHE)
             .map((key) => caches.delete(key))
         )
       )
@@ -43,94 +35,26 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
+  const url = new URL(event.request.url);
 
-  if (request.method !== 'GET') return;
+  // API request: selalu fresh dari network, jangan pernah cache
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
 
-  const url = new URL(request.url);
-
-  if (url.origin !== self.location.origin) return;
-
-  if (
-    url.pathname.startsWith('/_next/image') ||
-    request.headers.get('accept')?.includes('image/')
-  ) {
+  // Halaman navigasi (klik link, ketik URL): network-first, fallback offline page
+  if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.open(PAGE_CACHE).then(async (cache) => {
-        const cached = await cache.match(request);
-        if (cached) return cached;
-        try {
-          const response = await fetch(request);
-          if (response.ok) cache.put(request, response.clone());
-          return response;
-        } catch {
-          return cached || Response.error();
-        }
-      })
+      fetch(event.request).catch(() => caches.match(OFFLINE_URL))
     );
     return;
   }
 
-  if (
-    request.headers.get('accept')?.includes('text/html') ||
-    request.mode === 'navigate'
-  ) {
-    event.respondWith(
-      caches.open(PAGE_CACHE).then(async (cache) => {
-        try {
-          const response = await fetch(request);
-          if (response.ok) cache.put(request, response.clone());
-          return response;
-        } catch {
-          const cached = await cache.match(request);
-          if (cached) return cached;
-          const offline = await cache.match(OFFLINE_URL);
-          return offline || Response.error();
-        }
-      })
-    );
-    return;
-  }
-
-  if (
-    url.pathname.startsWith('/_next/static/') ||
-    url.pathname.match(/\.(js|css|woff2?|svg|png|jpg|jpeg|gif|webp|ico)$/)
-  ) {
-    event.respondWith(
-      caches.open(STATIC_CACHE).then(async (cache) => {
-        const cached = await cache.match(request);
-        if (cached) {
-          fetch(request)
-            .then((response) => {
-              if (response.ok) cache.put(request, response.clone());
-            })
-            .catch(() => {});
-          return cached;
-        }
-        try {
-          const response = await fetch(request);
-          if (response.ok) cache.put(request, response.clone());
-          return response;
-        } catch {
-          return cached || Response.error();
-        }
-      })
-    );
-    return;
-  }
-
+  // Asset statis lain: cache-first
   event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request)
-        .then((response) => {
-          if (!response || response.status !== 200 || response.type !== 'basic')
-            return response;
-          const responseToCache = response.clone();
-          caches.open(PAGE_CACHE).then((cache) => cache.put(request, responseToCache));
-          return response;
-        })
-        .catch(() => cached || Response.error());
-    })
+    caches
+      .match(event.request)
+      .then((response) => response || fetch(event.request))
   );
 });

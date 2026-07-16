@@ -21,6 +21,7 @@ export type NavItem = {
   href: string;
   icon: LucideIcon;
   badge?: string;
+  roles?: ('student' | 'admin' | 'guest')[];
 };
 
 export type NavGroup = {
@@ -42,7 +43,6 @@ export const dashboardNav: NavGroup[] = [
       { label: 'Kelas', href: '/kelas', icon: GraduationCap },
       { label: 'Mata Pelajaran', href: '/mapel', icon: BookOpen },
       { label: 'Materi', href: '/materi', icon: FileText },
-      { label: 'Quiz', href: '/materi', icon: HelpCircle, badge: 'New' },
     ],
   },
   {
@@ -52,6 +52,17 @@ export const dashboardNav: NavGroup[] = [
       { label: 'Downloads', href: '/downloads', icon: Download },
       { label: 'Sertifikat', href: '/profile', icon: Award },
       { label: 'Pengaturan', href: '/profile', icon: Settings },
+    ],
+  },
+  {
+    title: 'Admin',
+    items: [
+      {
+        label: 'Panel Admin',
+        href: '/admin',
+        icon: Settings,
+        roles: ['admin'],
+      },
     ],
   },
 ];
@@ -74,9 +85,7 @@ export const adminNav: NavGroup[] = [
   },
   {
     title: 'Sistem',
-    items: [
-      { label: 'Pengaturan', href: '/admin', icon: Settings },
-    ],
+    items: [{ label: 'Pengaturan', href: '/admin', icon: Settings }],
   },
 ];
 
@@ -112,14 +121,6 @@ export const footerSections = [
       { label: 'Daftar', href: '/register' },
       { label: 'Dashboard', href: '/dashboard' },
       { label: 'Profile', href: '/profile' },
-    ],
-  },
-  {
-    title: 'Admin',
-    links: [
-      { label: 'Panel Admin', href: '/admin' },
-      { label: 'Upload', href: '/admin/upload' },
-      { label: 'Kelola Materi', href: '/admin/materi' },
     ],
   },
 ];

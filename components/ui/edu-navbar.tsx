@@ -3,12 +3,13 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { GraduationCap, Menu, X, Bell, Search } from 'lucide-react';
+import { GraduationCap, Menu, X, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { InputWithIcon } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { GlobalSearch } from '@/components/layout/global-search';
 
 export interface EduNavbarItem {
   label: string;
@@ -75,13 +76,10 @@ export function EduNavbar({ items, user, className }: EduNavbarProps) {
 
         {/* Right side */}
         <div className="flex items-center gap-2">
-          <div className="hidden lg:block">
-            <InputWithIcon
-              placeholder="Search courses..."
-              className="w-56"
-              icon={<Search className="h-4 w-4" />}
-            />
+          <div className="hidden w-56 lg:block">
+            <GlobalSearch />
           </div>
+          <ThemeToggle />
           <Button variant="ghost" size="icon" className="relative">
             <Bell className="h-5 w-5" />
             <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-accent" />
@@ -93,8 +91,8 @@ export function EduNavbar({ items, user, className }: EduNavbarProps) {
               </AvatarFallback>
             </Avatar>
           ) : (
-            <Button size="sm" className="hidden sm:inline-flex">
-              Sign In
+            <Button size="sm" className="hidden sm:inline-flex" asChild>
+              <Link href="/login">Masuk</Link>
             </Button>
           )}
           <button

@@ -2,6 +2,7 @@
 
 import { AuthGuard } from '@/components/providers/auth-guard';
 import { dashboardNav } from '@/config/navigation';
+import { PwaInstallPrompt } from '@/components/pwa-install-prompt';
 
 export default function DashboardLayout({
   children,
@@ -15,6 +16,7 @@ export default function DashboardLayout({
       brandHref="/dashboard"
     >
       {children}
+      <PwaInstallPrompt />
     </AuthGuard>
   );
 }

@@ -9,23 +9,59 @@ import {
   CardContent,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { connectToDatabase } from '@/lib/mongodb';
+import Subject from '@/models/Subject';
 
-const subjects = [
-  { title: 'Matematika', icon: '📐', count: 96, levels: ['SD', 'SMP', 'SMA'] },
-  { title: 'Bahasa Indonesia', icon: '📚', count: 74, levels: ['SD', 'SMP', 'SMA'] },
-  { title: 'IPA', icon: '🔬', count: 48, levels: ['SD', 'SMP'] },
-  { title: 'Fisika', icon: '⚛️', count: 28, levels: ['SMA'] },
-  { title: 'Kimia', icon: '🧪', count: 26, levels: ['SMA'] },
-  { title: 'Biologi', icon: '🧬', count: 24, levels: ['SMA'] },
-  { title: 'Bahasa Inggris', icon: '🌐', count: 70, levels: ['SD', 'SMP', 'SMA'] },
-  { title: 'Sejarah', icon: '🏛️', count: 20, levels: ['SMP', 'SMA'] },
-  { title: 'Geografi', icon: '🗺️', count: 18, levels: ['SMP', 'SMA'] },
-  { title: 'Ekonomi', icon: '💰', count: 22, levels: ['SMA'] },
-  { title: 'Informatika', icon: '💻', count: 42, levels: ['SD', 'SMP', 'SMA'] },
-  { title: 'PPKn', icon: '🇮🇩', count: 46, levels: ['SD', 'SMP', 'SMA'] },
-];
+interface SubjectData {
+  _id: string;
+  name: string;
+  icon: string;
+  count: number;
+  levels: string[];
+}
 
-export default function MapelPage() {
+async function getSubjects(): Promise<SubjectData[]> {
+  try {
+    await connectToDatabase();
+    const subjects = await Subject.aggregate([
+      {
+        $lookup: {
+          from: 'materials',
+          localField: '_id',
+          foreignField: 'subject',
+          as: 'materials',
+        },
+      },
+      {
+        $addFields: {
+          count: { $size: '$materials' },
+          levels: { $setUnion: ['$materials.level', []] },
+        },
+      },
+      { $project: { materials: 0 } },
+      { $sort: { name: 1 } },
+    ]);
+
+    return subjects.map((s) => ({
+      _id: s._id.toString(),
+      name: s.name,
+      icon: s.icon,
+      count: s.count,
+      levels: s.levels,
+    }));
+  } catch (err) {
+    return [];
+  }
+}
+
+export const metadata = {
+  title: 'Mata Pelajaran',
+  description: 'Jelajahi semua mata pelajaran yang tersedia di EduBridge',
+};
+
+export default async function MapelPage() {
+  const subjects = await getSubjects();
+
   return (
     <div>
       <PageHeader
@@ -35,13 +71,13 @@ export default function MapelPage() {
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {subjects.map((subject) => (
-          <Link key={subject.title} href="/materi">
+          <Link key={subject._id} href={`/materi?subject=${subject._id}`}>
             <Card variant="elevated" className="group h-full cursor-pointer">
               <CardHeader>
                 <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-xl bg-muted text-2xl">
                   {subject.icon}
                 </div>
-                <CardTitle>{subject.title}</CardTitle>
+                <CardTitle>{subject.name}</CardTitle>
                 <CardDescription>
                   {subject.count} materi tersedia
                 </CardDescription>
@@ -62,6 +98,12 @@ export default function MapelPage() {
           </Link>
         ))}
       </div>
+
+      {subjects.length === 0 && (
+        <div className="py-20 text-center text-muted-foreground">
+          Belum ada mata pelajaran yang tersedia
+        </div>
+      )}
     </div>
   );
 }
