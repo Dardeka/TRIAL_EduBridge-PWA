@@ -22,8 +22,14 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ data: materials });
   } catch (error) {
+    console.error('GET /api/materials error:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch materials' },
+      {
+        error: 'Failed to fetch materials',
+        ...(process.env.NODE_ENV !== 'production' && {
+          details: error instanceof Error ? error.message : String(error),
+        }),
+      },
       { status: 500 }
     );
   }
@@ -36,8 +42,14 @@ export async function POST(req: NextRequest) {
     const material = await Material.create(body);
     return NextResponse.json({ data: material }, { status: 201 });
   } catch (error) {
+    console.error('POST /api/materials error:', error);
     return NextResponse.json(
-      { error: 'Failed to create material' },
+      {
+        error: 'Failed to create material',
+        ...(process.env.NODE_ENV !== 'production' && {
+          details: error instanceof Error ? error.message : String(error),
+        }),
+      },
       { status: 500 }
     );
   }
